@@ -1,148 +1,138 @@
-// ------------------------------
-// Estado & seed
-// ------------------------------
-const KEY = "professor_plus_v1";
+// ======= AUTH & STATE =======
+const STORE_KEY = "professor_plus_v1";
+const AUTH_KEY  = "pp_auth";
 
 const seed = {
   usuario: { nome: "Prof. Gilson" },
   turmas: [
-    { id: "t1", nome: "Matemática", serie: "2ª série", turno: "Manhã" },
-    { id: "t2", nome: "História", serie: "1ª série", turno: "Tarde" },
-    { id: "t3", nome: "Geografia", serie: "3ª série", turno: "Noite" },
-    { id: "t4", nome: "Português", serie: "4ª série", turno: "Manhã" }
+    { id:"t1", nome:"Matemática", serie:"2ª série", turno:"Manhã" },
+    { id:"t2", nome:"História",   serie:"1ª série", turno:"Tarde" },
+    { id:"t3", nome:"Geografia",  serie:"3ª série", turno:"Noite" },
+    { id:"t4", nome:"Português",  serie:"4ª série", turno:"Manhã" }
   ],
-  alunos: {
-    t1: [
-      "Ana Lima","Bruno Almeida","Carla Andrade","Daniel Melo","Fernanda Souza"
-    ],
-    t2: ["Alice Souza","Bruno Almeida","Carla Ferreira","Diego Martins","Ester Rodrigues"],
-    t3: ["Rafa Santos","Marina Souza","Caio Lima"],
-    t4: ["Paula Seixas","Gustavo Reis"]
+  alunos:{
+    t1:["Ana Lima","Bruno Almeida","Carla Andrade","Daniel Melo","Fernanda Souza"],
+    t2:["Alice Souza","Bruno Almeida","Carla Ferreira","Diego Martins","Ester Rodrigues"],
+    t3:["Rafa Santos","Marina Souza","Caio Lima"],
+    t4:["Paula Seixas","Gustavo Reis"]
   },
-  atividades: {
-    t1: [
+  atividades:{
+    t1:[
       { id:"a1", titulo:"Prova de Geometria", data:"2024-04-20" },
       { id:"a2", titulo:"Trabalho: História da Matemática", data:"2024-04-10" },
       { id:"a3", titulo:"Avaliação Bimestral", data:"2024-04-05" }
     ]
   },
-  notas: { // { turmaId: { atividadeId: { aluno:nota } } }
-    t1: { }
-  },
-  chamada: { // { turmaId: { ISODate: { aluno: "presente|falta|justi" } } }
-    t1: {}
-  }
+  notas:{},      // { turmaId: { atividadeId: { aluno: nota } } }
+  chamada:{}     // { turmaId: { ISODate: { aluno: status } } }
 };
 
-function loadState(){
-  const raw = localStorage.getItem(KEY);
-  if(!raw){
-    localStorage.setItem(KEY, JSON.stringify(seed));
-    return JSON.parse(JSON.stringify(seed));
-  }
+function load(){
+  const raw = localStorage.getItem(STORE_KEY);
+  if(!raw){ localStorage.setItem(STORE_KEY, JSON.stringify(seed)); return JSON.parse(JSON.stringify(seed)); }
   try { return JSON.parse(raw); } catch { return JSON.parse(JSON.stringify(seed)); }
 }
-function saveState(){ localStorage.setItem(KEY, JSON.stringify(state)); }
-let state = loadState();
+function save(){ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
+function isAuthed(){ return !!localStorage.getItem(AUTH_KEY); }
+function setAuth(on){ if(on) localStorage.setItem(AUTH_KEY,"1"); else localStorage.removeItem(AUTH_KEY); }
 
-// ------------------------------
-// Util
-// ------------------------------
-const $ = (sel, root=document) => root.querySelector(sel);
-const $$ = (sel, root=document) => [...root.querySelectorAll(sel)];
-function fmtTurma(t){ return `${t.nome} – ${t.serie} • ${t.turno}`; }
-function todayISO(){ return new Date().toISOString().slice(0,10); }
-function byId(arr, id){ return arr.find(x => x.id === id); }
+let state = load();
 
-// ------------------------------
-// Login / App toggling
-// ------------------------------
+// ======= HELPERS =======
+const $  = (s,root=document)=>root.querySelector(s);
+const $$ = (s,root=document)=>[...root.querySelectorAll(s)];
+const fmtTurma = t => `${t.nome} – ${t.serie} • ${t.turno}`;
+const todayISO = () => new Date().toISOString().slice(0,10);
+const byId = (arr,id) => arr.find(x=>x.id===id);
+
+// ======= ELEMENTS =======
 const loginScreen = $("#login-screen");
-const appEl = $("#app");
+const appEl   = $("#app");
 const content = $("#content");
 const sidebar = $("#sidebar");
 $("#btnHamburger").onclick = () => sidebar.classList.toggle("open");
+$("#btnSair").onclick = ()=>{ setAuth(false); location.hash="#/login"; };
+$("#btnLoginGoogle").onclick = doLogin;
+$("#btnLoginEmail").onclick = doLogin;
 
-$("#btnLoginGoogle").onclick = fakeLogin;
-$("#btnLoginEmail").onclick = fakeLogin;
-$("#btnSair").onclick = () => {
-  location.hash = "";
-  loginScreen.classList.remove("hidden");
-  appEl.classList.add("hidden");
-};
-function fakeLogin(){
-  loginScreen.classList.add("hidden");
-  appEl.classList.remove("hidden");
-  if(!location.hash) location.hash = "#/dashboard";
+function doLogin(){
+  setAuth(true);
+  $("#perfilNome").textContent = state.usuario.nome || "Prof. Gilson";
+  location.hash = "#/dashboard";
 }
 
-// ------------------------------
-// Router
-// ------------------------------
+// ======= ROUTER =======
 const routes = {
+  "/login": renderLogin,
   "/dashboard": renderDashboard,
   "/turmas": renderTurmas,
-  "/turma": params => renderDetalheTurma(params.id),
+  "/turma": p => renderDetalheTurma(p.id),
   "/atividades": renderAtividadesGlobais,
-  "/lancar": params => renderLancarNotas(params.turma, params.atividade),
+  "/lancar": p => renderLancarNotas(p.turma, p.atividade),
   "/relatorios": renderRelatorios,
   "/estatisticas": renderEstatisticas,
   "/perfil": renderPerfil,
   "/config": renderConfig,
-  "/chamada": () => {
-    // atalho: chama detalhe da primeira turma para chamada
-    const t = state.turmas[0]; renderDetalheTurma(t.id, "chamada");
-  }
+  "/nova-turma": () => { location.hash = "#/turmas"; setTimeout(()=> novaTurma(), 0); },
+  "/chamada": () => { const t=state.turmas[0]; renderDetalheTurma(t.id,"chamada"); }
 };
 
 window.addEventListener("hashchange", handleRoute);
+document.addEventListener("DOMContentLoaded", () => {
+  if(!location.hash) location.hash = isAuthed() ? "#/dashboard" : "#/login";
+  handleRoute();
+});
+
 function parseHash(){
   const [path, query] = location.hash.replace("#","").split("?");
   const params = Object.fromEntries(new URLSearchParams(query||"").entries());
   return { path, params };
 }
+
 function handleRoute(){
   const { path, params } = parseHash();
-  const fn = routes[path] || renderDashboard;
-  fn(params || {});
-  highlightNav(path);
-}
-function highlightNav(path){
-  $$("[data-route]").forEach(a=>{
-    a.classList.toggle("active", a.getAttribute("href") === `#${path}`);
-  });
-}
-if(location.hash){ handleRoute(); }
 
-// ------------------------------
-// Render: Dashboard
-// ------------------------------
+  // Protege rotas
+  if(path !== "/login" && !isAuthed()){
+    location.replace("#/login");
+    return;
+  }
+
+  // Alterna exibição app x login
+  if(path === "/login"){ showLogin(); }
+  else { showApp(); }
+
+  // Render
+  (routes[path] || renderDashboard)(params);
+
+  // Destaque no menu
+  $$("[data-route]").forEach(a => a.classList.toggle("active", a.getAttribute("href") === `#${path}`));
+}
+
+function showLogin(){ loginScreen.classList.remove("hidden"); appEl.classList.add("hidden"); }
+function showApp(){ loginScreen.classList.add("hidden"); appEl.classList.remove("hidden"); }
+
+// ======= DASHBOARD =======
 function renderDashboard(){
-  const tpl = $("#tpl-dashboard").content.cloneNode(true);
-  $("#content").innerHTML = "";
-  content.appendChild(tpl);
-
+  content.innerHTML = "";
+  content.appendChild($("#tpl-dashboard").content.cloneNode(true));
   $("#kpiTurmas").textContent = state.turmas.length;
-  const totalAlunos = Object.values(state.alunos).reduce((acc,arr)=>acc+arr.length,0);
+  const totalAlunos = Object.values(state.alunos).reduce((s,a)=>s+a.length,0);
   $("#kpiAlunos").textContent = totalAlunos;
-  // Atividades hoje (mock por data igual a hoje)
+
   const hoje = todayISO();
   let hojeCount = 0;
-  Object.values(state.atividades).forEach(list=>{
-    list.forEach(a=>{ if(a.data===hoje) hojeCount++; });
-  });
+  Object.values(state.atividades).forEach(list=> list.forEach(a=>{ if(a.data===hoje) hojeCount++; }));
   $("#kpiAtividadesHoje").textContent = hojeCount;
 }
 
-// ------------------------------
-// Render: Turmas
-// ------------------------------
+// ======= TURMAS =======
 function renderTurmas(){
-  const tpl = $("#tpl-turmas").content.cloneNode(true);
-  content.innerHTML = ""; content.appendChild(tpl);
+  content.innerHTML = "";
+  content.appendChild($("#tpl-turmas").content.cloneNode(true));
+  $("#btnNovaTurma").onclick = novaTurma;
 
-  const list = $("#listaTurmas");
-  list.innerHTML = "";
+  const list = $("#listaTurmas"); list.innerHTML = "";
   state.turmas.forEach(t=>{
     const row = document.createElement("div");
     row.className = "row";
@@ -153,21 +143,28 @@ function renderTurmas(){
       </div>
       <div class="row-actions">
         <a class="action" title="Ver" href="#/turma?id=${t.id}">👁️</a>
-        <button class="action" title="Editar">✏️</button>
-        <button class="action" title="Mais">📋</button>
-      </div>
-    `;
+        <button class="action" title="Editar" onclick="alert('Edição simples via prompt em próxima versão')">✏️</button>
+      </div>`;
     list.appendChild(row);
   });
 }
 
-// ------------------------------
-// Render: Detalhe Turma (Alunos / Atividades / Chamada)
-// ------------------------------
+function novaTurma(){
+  const nome  = prompt("Nome da turma (ex: Matemática):");
+  if(!nome) return;
+  const serie = prompt("Série (ex: 2ª série):","2ª série") || "2ª série";
+  const turno = prompt("Turno (ex: Manhã):","Manhã") || "Manhã";
+  state.turmas.push({ id: crypto.randomUUID(), nome, serie, turno });
+  state.alunos = state.alunos || {};
+  save();
+  renderTurmas();
+}
+
+// ======= DETALHE DA TURMA =======
 function renderDetalheTurma(turmaId, initialTab="alunos"){
   const turma = byId(state.turmas, turmaId) || state.turmas[0];
-  const tpl = $("#tpl-detalhe-turma").content.cloneNode(true);
-  content.innerHTML = ""; content.appendChild(tpl);
+  content.innerHTML = "";
+  content.appendChild($("#tpl-detalhe-turma").content.cloneNode(true));
 
   $("#nomeUsuarioTop").textContent = state.usuario.nome || "Gilson";
   $("#tituloTurma").textContent = `${turma.nome} – ${turma.serie} – ${turma.turno}`;
@@ -185,21 +182,16 @@ function renderDetalheTurma(turmaId, initialTab="alunos"){
 
   // Alunos
   const alunos = state.alunos[turma.id] || [];
-  const listaAlunos = $("#listaAlunos");
-  listaAlunos.innerHTML = "";
+  const listaAlunos = $("#listaAlunos"); listaAlunos.innerHTML = "";
   alunos.forEach(nome=>{
-    const row = document.createElement("div");
-    row.className = "row";
-    row.innerHTML = `<div class="row-title">${nome}</div>`;
-    listaAlunos.appendChild(row);
+    const r = document.createElement("div");
+    r.className = "row";
+    r.innerHTML = `<div class="row-title">${nome}</div>`;
+    listaAlunos.appendChild(r);
   });
   $("#btnNovoAluno").onclick = ()=>{
     const nome = prompt("Nome do novo aluno:");
-    if(nome){
-      state.alunos[turma.id] = state.alunos[turma.id] || [];
-      state.alunos[turma.id].push(nome);
-      saveState(); renderDetalheTurma(turma.id,"alunos");
-    }
+    if(nome){ (state.alunos[turma.id] = state.alunos[turma.id] || []).push(nome); save(); renderDetalheTurma(turma.id,"alunos"); }
   };
 
   // Atividades
@@ -209,34 +201,29 @@ function renderDetalheTurma(turmaId, initialTab="alunos"){
   atividades.forEach(a=>{
     const r = document.createElement("div");
     r.className = "row";
-    const dt = new Date(a.data);
     r.innerHTML = `
       <div>
         <div class="row-title">${a.titulo}</div>
-        <div class="row-sub">${dt.toLocaleDateString()}</div>
+        <div class="row-sub">${new Date(a.data).toLocaleDateString()}</div>
       </div>
       <div class="row-actions">
         <a class="btn btn-primary" href="#/lancar?turma=${turma.id}&atividade=${a.id}">Lançar Notas</a>
-      </div>
-    `;
+      </div>`;
     listaAtv.appendChild(r);
   });
   $("#btnNovaAtividade").onclick = ()=>{
     const titulo = prompt("Título da atividade:");
     if(!titulo) return;
     const data = prompt("Data (AAAA-MM-DD):", todayISO());
-    state.atividades[turma.id] = state.atividades[turma.id] || [];
-    state.atividades[turma.id].push({ id: crypto.randomUUID(), titulo, data });
-    saveState(); renderDetalheTurma(turma.id,"atividades");
+    (state.atividades[turma.id] = state.atividades[turma.id] || []).push({ id: crypto.randomUUID(), titulo, data });
+    save(); renderDetalheTurma(turma.id,"atividades");
   };
 
   // Chamada
   $("#chamadaData").textContent = new Date().toLocaleDateString();
-  const listaChamada = $("#listaChamada");
-  listaChamada.innerHTML = "";
+  const listaChamada = $("#listaChamada"); listaChamada.innerHTML = "";
   const dataKey = todayISO();
   const reg = (((state.chamada||{})[turma.id]||{})[dataKey]) || {};
-
   alunos.forEach(nome=>{
     const row = document.createElement("div");
     row.className = "chamada-row";
@@ -244,39 +231,32 @@ function renderDetalheTurma(turmaId, initialTab="alunos"){
       <div>${nome}</div>
       <button class="btn-pill" data-val="presente">Presente</button>
       <button class="btn-pill" data-val="falta">Falta</button>
-      <button class="btn-pill" data-val="justi">Justi.</button>
-    `;
+      <button class="btn-pill" data-val="justi">Justi.</button>`;
     const [bP,bF,bJ] = row.querySelectorAll(".btn-pill");
-    const apply = (val)=>{
-      [bP,bF,bJ].forEach(b=>b.classList.remove("active"));
+    const apply = (val)=>{ [bP,bF,bJ].forEach(b=>b.classList.remove("active"));
       if(val==="presente") bP.classList.add("active");
-      if(val==="falta") bF.classList.add("active");
-      if(val==="justi") bJ.classList.add("active");
+      if(val==="falta")    bF.classList.add("active");
+      if(val==="justi")    bJ.classList.add("active");
       reg[nome]=val;
     };
     [bP,bF,bJ].forEach(b=> b.onclick = ()=> apply(b.dataset.val));
     if(reg[nome]) apply(reg[nome]);
     listaChamada.appendChild(row);
   });
-
   $("#btnSalvarChamada").onclick = ()=>{
     state.chamada[turma.id] = state.chamada[turma.id] || {};
     state.chamada[turma.id][dataKey] = reg;
-    saveState();
-    alert("Chamada salva!");
+    save(); alert("Chamada salva!");
   };
 }
 
-// ------------------------------
-// Render: Lançar Notas
-// ------------------------------
+// ======= LANÇAR NOTAS =======
 function renderLancarNotas(turmaId, atividadeId){
   const turma = byId(state.turmas, turmaId);
-  if(!turma){ location.hash = "#/turmas"; return; }
+  if(!turma){ location.hash="#/turmas"; return; }
   const atividade = (state.atividades[turmaId]||[]).find(a=>a.id===atividadeId);
-  const tpl = $("#tpl-lancar-notas").content.cloneNode(true);
-  content.innerHTML = ""; content.appendChild(tpl);
-
+  content.innerHTML = "";
+  content.appendChild($("#tpl-lancar-notas").content.cloneNode(true));
   $("#lancarUser").textContent = state.usuario.nome || "Gilson";
   $("#contextoLancar").textContent = `${atividade?.titulo || "Atividade"} – ${fmtTurma(turma)}`;
 
@@ -292,70 +272,51 @@ function renderLancarNotas(turmaId, atividadeId){
     row.innerHTML = `
       <div>${nome}</div>
       <input class="note-input" type="number" min="0" max="10" step="0.1" value="${valor}" />
-      <span class="comment-ico" title="Observação">💬</span>
-    `;
+      <span class="comment-ico" title="Observação">💬</span>`;
     const inp = row.querySelector("input");
     inp.onchange = ()=> notasAtividade[nome] = Number(inp.value);
     list.appendChild(row);
   });
 
-  $("#btnSalvarNotas").onclick = ()=>{
-    saveState();
-    alert("Notas salvas!");
-    location.hash = `#/turma?id=${turmaId}`;
-  };
+  $("#btnSalvarNotas").onclick = ()=>{ save(); alert("Notas salvas!"); location.hash=`#/turma?id=${turmaId}`; };
 }
 
-// ------------------------------
-// Render: Atividades (globais)
-—------------------------------
+// ======= ATIVIDADES (GLOBAL) =======
 function renderAtividadesGlobais(){
-  const tpl = $("#tpl-atividades").content.cloneNode(true);
-  content.innerHTML = ""; content.appendChild(tpl);
-
-  const cont = $("#atividadesGlobais");
-  cont.innerHTML = "";
+  content.innerHTML = "";
+  content.appendChild($("#tpl-atividades").content.cloneNode(true));
+  const cont = $("#atividadesGlobais"); cont.innerHTML = "";
   state.turmas.forEach(t=>{
     (state.atividades[t.id]||[]).forEach(a=>{
       const r = document.createElement("div");
       r.className="row";
-      const dt = new Date(a.data).toLocaleDateString();
       r.innerHTML = `
         <div>
           <div class="row-title">${a.titulo}</div>
-          <div class="row-sub">${fmtTurma(t)} — ${dt}</div>
+          <div class="row-sub">${fmtTurma(t)} — ${new Date(a.data).toLocaleDateString()}</div>
         </div>
         <div class="row-actions">
           <a class="btn btn-primary" href="#/lancar?turma=${t.id}&atividade=${a.id}">Lançar Notas</a>
-        </div>
-      `;
+        </div>`;
       cont.appendChild(r);
     });
   });
 }
 
-// ------------------------------
-// Render: Relatórios (gráficos)
-// ------------------------------
+// ======= RELATÓRIOS =======
 let chartPresenca, chartMedias;
-
 function renderRelatorios(){
-  const tpl = $("#tpl-relatorios").content.cloneNode(true);
-  content.innerHTML = ""; content.appendChild(tpl);
-
-  // Filtros
-  const selTurma = $("#filtroTurma");
-  selTurma.innerHTML = `<option value="todas">Todas as turmas</option>` +
-    state.turmas.map(t=> `<option value="${t.id}">${t.nome}</option>`).join("");
-
+  content.innerHTML = "";
+  content.appendChild($("#tpl-relatorios").content.cloneNode(true));
   $("#btnExportPDF").onclick = ()=> window.print();
   $("#btnExportExcel").onclick = exportCSV;
 
+  const selTurma = $("#filtroTurma");
+  selTurma.innerHTML = `<option value="todas">Todas as turmas</option>` + state.turmas.map(t=>`<option value="${t.id}">${t.nome}</option>`).join("");
   drawCharts();
 }
 
 function drawCharts(){
-  // Data de presença por turma = % de presentes no dia atual (mock via registros)
   const labels = state.turmas.map(t=> t.nome.charAt(0));
   const dataPresenca = state.turmas.map(t=>{
     const alunos = state.alunos[t.id]||[];
@@ -364,19 +325,15 @@ function drawCharts(){
     return alunos.length ? Math.round((presentes/alunos.length)*100) : 0;
   });
 
-  if(chartPresenca){ chartPresenca.destroy(); }
-  chartPresenca = new ApexCharts(document.querySelector("#chartPresenca"), {
-    chart:{ type:"bar", height:280 },
-    series:[{ name:"Presença (%)", data: dataPresenca }],
-    xaxis:{ categories: labels },
-    grid:{ borderColor:"#eee" }
-  });
-  chartPresenca.render();
+  if(chartPresenca) chartPresenca.destroy();
+  chartPresenca = new ApexCharts(document.querySelector("#chartPresenca"),{
+    chart:{type:"bar",height:280}, series:[{name:"Presença (%)",data:dataPresenca}],
+    xaxis:{categories:labels}, grid:{borderColor:"#eee"}
+  }); chartPresenca.render();
 
-  // Média das notas (faixas)
   const faixas = { abaixo:0, media:0, acima:0, excelente:0 };
-  Object.entries(state.notas).forEach(([turmaId, porAtividade])=>{
-    Object.values(porAtividade).forEach(map=>{
+  Object.values(state.notas).forEach(porAtv=>{
+    Object.values(porAtv).forEach(map=>{
       Object.values(map).forEach(n=>{
         if(n < 5) faixas.abaixo++;
         else if(n < 7) faixas.media++;
@@ -385,19 +342,14 @@ function drawCharts(){
       });
     });
   });
-  const pieData = [faixas.abaixo, faixas.acima, faixas.media, faixas.excelente];
-
-  if(chartMedias){ chartMedias.destroy(); }
-  chartMedias = new ApexCharts(document.querySelector("#chartMedias"), {
-    chart:{ type:"pie", height:280 },
-    series: pieData,
-    labels: ["Abaixo da média","Acima da média","Média","Excelente"]
-  });
-  chartMedias.render();
+  const pie = [faixas.abaixo, faixas.acima, faixas.media, faixas.excelente];
+  if(chartMedias) chartMedias.destroy();
+  chartMedias = new ApexCharts(document.querySelector("#chartMedias"),{
+    chart:{type:"pie",height:280}, series:pie,
+    labels:["Abaixo da média","Acima da média","Média","Excelente"]
+  }); chartMedias.render();
 }
-
 function exportCSV(){
-  // Exporta um resumo simples de presença e notas
   let csv = "Seção;Item;Valor\n";
   state.turmas.forEach(t=>{
     const alunos = state.alunos[t.id]||[];
@@ -413,41 +365,21 @@ function exportCSV(){
       });
     });
   });
-
   const blob = new Blob([csv], {type:"text/csv;charset=utf-8;"});
   const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = "relatorio_professor+.csv";
-  a.click();
+  a.href = URL.createObjectURL(blob); a.download = "relatorio_professor+.csv"; a.click();
   URL.revokeObjectURL(a.href);
 }
 
-// ------------------------------
-// Render: Estatísticas / Perfil / Config
-// ------------------------------
-function renderEstatisticas(){
-  const tpl = $("#tpl-estatisticas").content.cloneNode(true);
-  content.innerHTML = ""; content.appendChild(tpl);
-}
+// ======= ESTATÍSTICAS / PERFIL / CONFIG =======
+function renderEstatisticas(){ content.innerHTML=""; content.appendChild($("#tpl-estatisticas").content.cloneNode(true)); }
 function renderPerfil(){
-  const tpl = $("#tpl-perfil").content.cloneNode(true);
-  content.innerHTML = ""; content.appendChild(tpl);
+  content.innerHTML=""; content.appendChild($("#tpl-perfil").content.cloneNode(true));
   const inp = $("#inpNome"); inp.value = state.usuario.nome || "Prof. Gilson";
-  $("#btnSalvarPerfil").onclick = ()=>{
-    state.usuario.nome = inp.value || "Prof. Gilson";
-    saveState(); alert("Perfil salvo!");
-  };
+  $("#btnSalvarPerfil").onclick = ()=>{ state.usuario.nome = inp.value || "Prof. Gilson"; save(); $("#perfilNome").textContent = state.usuario.nome; alert("Perfil salvo!"); };
 }
 function renderConfig(){
-  const tpl = $("#tpl-config").content.cloneNode(true);
-  content.innerHTML = ""; content.appendChild(tpl);
-  $("#btnReset").onclick = ()=>{
-    localStorage.removeItem(KEY);
-    state = loadState();
-    alert("Dados limpos.");
-    location.hash = "#/dashboard";
-  };
+  content.innerHTML=""; content.appendChild($("#tpl-config").content.cloneNode(true));
+  $("#btnReset").onclick = ()=>{ localStorage.removeItem(STORE_KEY); state = load(); alert("Dados limpos."); location.hash="#/dashboard"; };
 }
-
-// Start on login (mock)
-if(!location.hash){ /* mostra login */ } else { fakeLogin(); handleRoute(); }
+function renderLogin(){ /* só para cumprir a rota; o showLogin já cuida da UI */ }
